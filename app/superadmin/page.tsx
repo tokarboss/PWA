@@ -39,7 +39,7 @@ export default function SuperAdminPage() {
       localStorage.setItem('saas_superadmin_auth', 'true');
       fetchTenants();
     } else {
-      alert('Неверный пароль! Используйте Tema1212');
+      alert('Неверный пароль!');
     }
   };
 
