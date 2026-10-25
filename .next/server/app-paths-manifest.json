@@ -1,4 +1,0 @@
-{
-  "/superadmin/page": "app/superadmin/page.js",
-  "/client/[tenantId]/page": "app/client/[tenantId]/page.js"
-}
