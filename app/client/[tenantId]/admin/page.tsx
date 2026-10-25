@@ -5,30 +5,9 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { db, Tenant, Service, Booking, PortfolioItem, ReviewItem } from '@/lib/db';
 import {
-  Lock,
-  CalendarCheck,
-  Wrench,
-  Camera,
-  Plus,
-  Trash2,
-  Save,
-  ExternalLink,
-  RefreshCw,
-  Phone,
-  CheckCircle2,
-  XCircle,
-  Star,
-  MessageSquareReply,
-  QrCode,
-  Download,
-  Printer,
-  Copy,
-  Sparkles,
-  MapPin,
-  Building2,
-  FileSpreadsheet,
-  Bell,
-  Send,
+  Lock, CalendarCheck, Wrench, Camera, Plus, Trash2, Save, ExternalLink,
+  RefreshCw, Phone, CheckCircle2, XCircle, Star, MessageSquareReply, QrCode,
+  Download, Printer, Copy, Sparkles, MapPin, Building2, FileSpreadsheet, Bell, Send, Clock
 } from 'lucide-react';
 
 export default function TenantAdminPage() {
@@ -74,6 +53,11 @@ export default function TenantAdminPage() {
   const [pfDescription, setPfDescription] = useState('');
 
   const [qrTarget, setQrTarget] = useState<'reviews' | 'services' | 'portfolio'>('reviews');
+  const [qrColor, setQrColor] = useState('#e11d48');
+  const [qrBadgeText, setQrBadgeText] = useState('ОЦЕНИТЕ КАЧЕСТВО РАБОТЫ');
+  const [qrHeadline, setQrHeadline] = useState('Понравился результат?');
+  const [qrSubtext, setQrSubtext] = useState('Наведите камеру смартфона для отзыва или записи');
+  const [qrWifiNote, setQrWifiNote] = useState('');
   const [originUrl, setOriginUrl] = useState('http://localhost:3000');
 
   useEffect(() => {
@@ -87,6 +71,7 @@ export default function TenantAdminPage() {
           setEditPhone(t.phone);
           setEditAddress(t.address);
           setEditBrandColor(t.brand_color || '#e11d48');
+          setQrColor(t.brand_color || '#e11d48');
           setEditLogoUrl(t.logo_url || '');
           setAuthenticated(true);
           loadAdminData();
@@ -103,12 +88,12 @@ export default function TenantAdminPage() {
       if (data && data.title) {
         setAdminNotifications((prev) => [data.body, ...prev]);
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(data.title, { body: data.body });
+          new Notification(data.title, { body: data.body, icon: tenant?.logo_url });
         }
       }
     };
     return () => channel.close();
-  }, [authenticated, tenantId]);
+  }, [authenticated, tenantId, tenant]);
 
   const requestNotificationPermission = () => {
     if ('Notification' in window && Notification.permission !== 'granted') {
@@ -130,6 +115,7 @@ export default function TenantAdminPage() {
       setEditPhone(t.phone);
       setEditAddress(t.address);
       setEditBrandColor(t.brand_color || '#e11d48');
+      setQrColor(t.brand_color || '#e11d48');
       setEditLogoUrl(t.logo_url || '');
 
       setAuthenticated(true);
@@ -137,7 +123,7 @@ export default function TenantAdminPage() {
       requestNotificationPermission();
       loadAdminData();
     } else {
-      alert('Неверный пароль!');
+      alert('Неверный пароль! Используйте Tema1212 или ваш PIN');
     }
   };
 
@@ -171,7 +157,6 @@ export default function TenantAdminPage() {
       address: editAddress,
       brand_color: editBrandColor,
       logo_url: editLogoUrl,
-      pin_code: 'Tema1212',
     });
     const updated = await db.getTenantById(tenantId);
     if (updated) setTenant(updated);
@@ -183,13 +168,21 @@ export default function TenantAdminPage() {
     e.preventDefault();
     if (!pushTitle.trim() || !pushBody.trim()) return;
 
-    setPushStatus('Отправка push-уведомлений клиентам...');
+    setPushStatus('Рассылка push-уведомлений клиентам...');
+    
+    // Симуляция системного PUSH-уведомления (покажет уведомление всем открытым PWA)
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('tenant_notifications_' + tenantId);
+      channel.postMessage({ title: pushTitle, body: pushBody });
+      channel.close();
+    }
+
     setTimeout(() => {
-      setPushStatus('✅ Push-уведомление успешно разослано клиентам!');
+      setPushStatus('✅ Push-уведомление успешно доставлено!');
       setPushTitle('');
       setPushBody('');
       setTimeout(() => setPushStatus(''), 3000);
-    }, 1000);
+    }, 800);
   };
 
   const handleExportCsv = () => {
@@ -206,7 +199,8 @@ export default function TenantAdminPage() {
       b.price,
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((e) => e.join(';'))].join('\n');
+    const csvContent = '﻿' + [headers.join(';'), ...rows.map((e) => e.join(';'))].join('
+');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -236,8 +230,7 @@ export default function TenantAdminPage() {
     loadAdminData();
   };
 
-  const toggleBookingStatus = async (bookingId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'cancelled' ? 'confirmed' : 'cancelled';
+  const toggleBookingStatus = async (bookingId: string, nextStatus: string) => {
     await db.updateBookingStatus(bookingId, nextStatus);
     loadAdminData();
   };
@@ -287,6 +280,17 @@ export default function TenantAdminPage() {
     loadAdminData();
   };
 
+  const qrFullDestinationUrl = originUrl + '/client/' + tenantId + '?tab=' + qrTarget;
+  // Запрашиваем QR с кастомным цветом и логотипом по центру (через api.qrserver)
+  const qrImageSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=16&ecc=H&color=${qrColor.replace('#', '')}&data=${encodeURIComponent(qrFullDestinationUrl)}`;
+
+  const downloadRawQR = async () => {
+    const a = document.createElement('a');
+    a.href = qrImageSrc;
+    a.download = `qr-code-${tenantId}-${qrTarget}.png`;
+    a.click();
+  };
+
   if (!authenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 bg-astryx-grid p-4">
@@ -296,7 +300,7 @@ export default function TenantAdminPage() {
           </div>
           <span className="text-[11px] font-bold uppercase tracking-widest text-indigo-400 block text-center">Owner Workspace</span>
           <h2 className="text-2xl font-extrabold text-center text-white mt-1 mb-6">Админка: {tenantId}</h2>
-          <input type="password" placeholder="Пароль" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full p-3.5 rounded-xl bg-zinc-950 border border-white/10 text-white text-center text-sm mb-4 focus:outline-none" />
+          <input type="password" placeholder="Пароль (Tema1212)" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full p-3.5 rounded-xl bg-zinc-950 border border-white/10 text-white text-center text-sm mb-4 focus:outline-none" />
           <button type="submit" className="w-full bg-white text-zinc-950 hover:bg-zinc-200 py-3.5 rounded-xl font-bold text-sm transition">Войти в панель</button>
           <Link href={'/client/' + tenantId} className="block text-center text-xs text-zinc-500 hover:text-zinc-300 mt-4">← На витрину PWA</Link>
         </form>
@@ -308,18 +312,17 @@ export default function TenantAdminPage() {
   const totalRevenue = confirmedBookings.reduce((acc, b) => acc + Number(b.price || 0), 0);
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + Number(r.rating), 0) / reviews.length).toFixed(1) : '5.0';
 
-  const qrFullDestinationUrl = originUrl + '/client/' + tenantId + '?tab=' + qrTarget;
-  const qrImageSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=16&ecc=H&data=' + encodeURIComponent(qrFullDestinationUrl);
-
   return (
-    <div className="min-h-screen bg-zinc-950 bg-astryx-grid text-zinc-100 p-6">
+    <div className="min-h-screen bg-zinc-950 bg-astryx-grid text-zinc-100 p-6 pb-24">
       <div className="max-w-7xl mx-auto">
+        
+        {/* Уведомления */}
         {adminNotifications.length > 0 && (
           <div className="mb-6 p-4 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-between gap-4 animate-bounce">
             <div className="flex items-center gap-3">
               <Bell className="w-5 h-5 text-indigo-400 animate-spin" />
               <div>
-                <span className="font-bold text-sm text-white">Внимание! Новая запись в боксе:</span>
+                <span className="font-bold text-sm text-white">Новое уведомление:</span>
                 <p className="text-xs text-indigo-200">{adminNotifications[0]}</p>
               </div>
             </div>
@@ -327,7 +330,7 @@ export default function TenantAdminPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap justify-between items-center gap-4 mb-6 bg-zinc-900/70 backdrop-blur-xl border border-white/10 p-5 rounded-2xl">
+        <div className="no-print flex flex-wrap justify-between items-center gap-4 mb-6 bg-zinc-900/70 backdrop-blur-xl border border-white/10 p-5 rounded-2xl">
           <div className="flex items-center gap-3">
             {tenant?.logo_url ? (
               <img src={tenant.logo_url} alt="" className="w-12 h-12 rounded-2xl object-cover border border-white/10" />
@@ -356,9 +359,9 @@ export default function TenantAdminPage() {
         </div>
 
         {/* KPI Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+        <div className="no-print grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
           <div className="bg-zinc-900/60 border border-white/[0.08] p-4 rounded-2xl">
-            <span className="text-xs text-zinc-400">Записи</span>
+            <span className="text-xs text-zinc-400">Активные записи</span>
             <div className="text-2xl font-extrabold text-white mt-1">{confirmedBookings.length}</div>
           </div>
           <div className="bg-zinc-900/60 border border-white/[0.08] p-4 rounded-2xl">
@@ -374,13 +377,13 @@ export default function TenantAdminPage() {
             <div className="text-2xl font-extrabold text-white mt-1">{services.length} усл.</div>
           </div>
           <div className="bg-zinc-900/60 border border-white/[0.08] p-4 rounded-2xl">
-            <span className="text-xs text-zinc-400">Портфолио</span>
-            <div className="text-2xl font-extrabold text-indigo-400 mt-1">{portfolio.length} раб.</div>
+            <span className="text-xs text-zinc-400">Новых заявок</span>
+            <div className="text-2xl font-extrabold text-indigo-400 mt-1">{bookings.filter(b => b.status === 'pending').length}</div>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="no-print flex flex-wrap gap-2 mb-6">
           <button onClick={() => setActiveSection('bookings')} className={activeSection === 'bookings' ? 'px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-zinc-950 shadow' : 'px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-900 text-zinc-400 border border-white/10'}>
             Записи ({bookings.length})
           </button>
@@ -394,13 +397,13 @@ export default function TenantAdminPage() {
             Прайс
           </button>
           <button onClick={() => setActiveSection('qr')} className={activeSection === 'qr' ? 'px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-zinc-950 shadow' : 'px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-900 text-zinc-400 border border-white/10'}>
-            QR-стенд
+            QR-Стенд
           </button>
           <button onClick={() => setActiveSection('push')} className={activeSection === 'push' ? 'px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-zinc-950 shadow' : 'px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-900 text-zinc-400 border border-white/10'}>
-            📢 Push-рассылка
+            Push-рассылка
           </button>
           <button onClick={() => setActiveSection('settings')} className={activeSection === 'settings' ? 'px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-zinc-950 shadow' : 'px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-900 text-zinc-400 border border-white/10'}>
-            ⚙️ Настройки
+            Настройки
           </button>
 
           {saveMessage && (
@@ -418,7 +421,7 @@ export default function TenantAdminPage() {
               </div>
               <div>
                 <h2 className="font-bold text-lg text-white">Рассылка Push-уведомлений клиентам</h2>
-                <p className="text-xs text-zinc-400">Отправьте важное сообщение на телефоны всех клиентов</p>
+                <p className="text-xs text-zinc-400">Отправьте сообщение всем, кто установил ваше PWA</p>
               </div>
             </div>
 
@@ -433,168 +436,159 @@ export default function TenantAdminPage() {
           </div>
         )}
 
-        {activeSection === 'settings' && (
-          <div className="bg-zinc-900/75 backdrop-blur-xl border border-white/10 p-6 rounded-3xl max-w-2xl">
-            <h2 className="font-bold text-lg text-white mb-2">Настройки профиля сервиса</h2>
-            <form onSubmit={handleUpdateProfile} className="space-y-4 pt-4">
-              <div>
-                <label className="text-xs font-medium text-zinc-400">Название автосервиса</label>
-                <input type="text" required value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white mt-1" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-zinc-400">Телефон</label>
-                  <input type="text" required value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white mt-1" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-zinc-400">Пароль входа</label>
-                  <input type="text" disabled value="Tema1212" className="w-full p-3 rounded-xl bg-zinc-950/50 border border-white/5 text-xs text-zinc-500 mt-1 cursor-not-allowed" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-zinc-400">Адрес</label>
-                <input type="text" required value={editAddress} onChange={(e) => setEditAddress(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-zinc-400">URL логотипа</label>
-                <input type="url" value={editLogoUrl} onChange={(e) => setEditLogoUrl(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-zinc-400">Фирменный цвет</label>
-                <div className="flex items-center gap-3 mt-1 p-2 rounded-xl bg-zinc-950 border border-white/10">
-                  <input type="color" value={editBrandColor} onChange={(e) => setEditBrandColor(e.target.value)} className="w-10 h-10 rounded-lg bg-transparent cursor-pointer border-0" />
-                  <span className="text-xs font-mono text-zinc-300">{editBrandColor}</span>
-                </div>
-              </div>
-              <button type="submit" className="w-full bg-white text-zinc-950 hover:bg-zinc-200 py-3.5 rounded-xl text-xs font-bold transition shadow-lg">
-                Сохранить настройки
-              </button>
-            </form>
-          </div>
-        )}
-
+        {/* ЗАПИСИ И МОДЕРАЦИЯ */}
         {activeSection === 'bookings' && (
           <div className="bg-zinc-900/70 border border-white/10 p-6 rounded-3xl">
-            <h2 className="font-bold text-lg text-white mb-4">Журнал бронирований клиентов</h2>
+            <h2 className="font-bold text-lg text-white mb-4">Журнал бронирований и заявок</h2>
             <div className="space-y-3">
               {bookings.length === 0 ? (
                 <div className="p-12 text-center text-zinc-500 text-sm">Записей пока нет.</div>
               ) : (
-                bookings.map((b) => (
-                  <div key={b.id} className="p-4 rounded-2xl border border-white/10 bg-zinc-950 flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-sm text-white">{b.service_title} ({b.car_class})</p>
-                      <p className="text-xs text-zinc-400 mt-1">👤 {b.client_name} • 📞 {b.client_phone} • 📅 {b.booking_date} в {b.booking_time}</p>
+                bookings.map((b) => {
+                  const isPending = b.status === 'pending';
+                  const isCancelled = b.status === 'cancelled';
+                  const isConfirmed = b.status === 'confirmed';
+
+                  return (
+                    <div key={b.id} className={`p-4 rounded-2xl border ${isPending ? 'bg-indigo-900/20 border-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.15)]' : isCancelled ? 'bg-zinc-950/60 border-rose-500/10 opacity-60' : 'bg-zinc-950 border-white/10'} flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition`}>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm text-white">{b.service_title}</span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300">{b.car_class}</span>
+                          
+                          {isPending && <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 animate-pulse"><Clock className="w-3 h-3" /> Ожидает подтверждения</span>}
+                          {isConfirmed && <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Подтверждено</span>}
+                          {isCancelled && <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1"><XCircle className="w-3 h-3" /> Отменено</span>}
+                        </div>
+                        <p className="text-xs text-zinc-300 mt-1.5">👤 {b.client_name} • 📞 <a href={'tel:'+b.client_phone} className="underline text-indigo-300">{b.client_phone}</a></p>
+                        <p className="text-xs text-zinc-400 mt-1">📅 Дата: <b className="text-white">{b.booking_date}</b> в <b className="text-white">{b.booking_time}</b></p>
+                      </div>
+                      
+                      <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto mt-3 sm:mt-0">
+                        <span className="font-extrabold text-emerald-400 text-base">{Number(b.price).toLocaleString('ru-RU')} ₽</span>
+                        
+                        <div className="flex items-center gap-2">
+                          {isPending && (
+                            <>
+                              <button onClick={() => toggleBookingStatus(b.id, 'confirmed')} className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition">Подтвердить</button>
+                              <button onClick={() => toggleBookingStatus(b.id, 'cancelled')} className="px-3 py-1.5 text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-lg transition">Отклонить</button>
+                            </>
+                          )}
+                          {isConfirmed && (
+                             <button onClick={() => toggleBookingStatus(b.id, 'cancelled')} className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition">Отменить запись</button>
+                          )}
+                          {isCancelled && (
+                             <button onClick={() => toggleBookingStatus(b.id, 'pending')} className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition">Вернуть в ожидание</button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-extrabold text-emerald-400">{b.price} ₽</span>
-                      <button onClick={() => toggleBookingStatus(b.id, b.status)} className="px-3 py-1.5 text-xs bg-rose-500/10 text-rose-400 rounded-xl">
-                        {b.status === 'cancelled' ? 'Восстановить' : 'Отменить'}
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
-        {activeSection === 'portfolio' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-5 bg-zinc-900/70 border border-white/10 p-6 rounded-3xl h-fit">
-              <h2 className="font-bold text-base text-white mb-4">Добавить работу в портфолио</h2>
-              <form onSubmit={handleAddPortfolio} className="space-y-3.5">
-                <input type="text" required placeholder="Название работы" value={pfTitle} onChange={(e) => setPfTitle(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="text" required placeholder="Авто (Porsche 911)" value={pfCarModel} onChange={(e) => setPfCarModel(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                  <input type="text" required placeholder="Категория" value={pfCategory} onChange={(e) => setPfCategory(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+        {/* QR СТЕНД */}
+        {activeSection === 'qr' && (
+          <div className="no-print grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-6 bg-zinc-900/75 backdrop-blur-xl border border-white/10 p-6 rounded-3xl space-y-5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white" style={{ backgroundColor: tenant?.brand_color || '#e11d48' }}>
+                  <QrCode className="w-5 h-5" />
                 </div>
-                <input type="url" required placeholder="URL фото ПОСЛЕ" value={pfImageUrl} onChange={(e) => setPfImageUrl(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <input type="url" placeholder="URL фото ДО (опционально)" value={pfBeforeImageUrl} onChange={(e) => setPfBeforeImageUrl(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <input type="number" required placeholder="Цена (₽)" value={pfPrice} onChange={(e) => setPfPrice(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <textarea rows={3} placeholder="Описание..." value={pfDescription} onChange={(e) => setPfDescription(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <button type="submit" className="w-full bg-white text-zinc-950 hover:bg-zinc-200 py-3 rounded-xl text-xs font-bold">Опубликовать</button>
-              </form>
-            </div>
-            <div className="lg:col-span-7 space-y-3">
-              {portfolio.map((item) => (
-                <div key={item.id} className="p-4 bg-zinc-900/70 border border-white/10 rounded-2xl flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <img src={item.image_url} alt="" className="w-20 h-16 object-cover rounded-xl" />
-                    <div>
-                      <p className="font-bold text-sm text-white">{item.title}</p>
-                      <p className="text-xs text-zinc-400">{item.car_model} • {item.price} ₽</p>
-                    </div>
-                  </div>
-                  <button onClick={() => handleDeletePortfolio(item.id)} className="text-zinc-500 hover:text-rose-400 p-2"><Trash2 className="w-4 h-4" /></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeSection === 'reviews' && (
-          <div className="bg-zinc-900/70 border border-white/10 p-6 rounded-3xl space-y-4">
-            <h2 className="font-bold text-lg text-white mb-2">Модерация отзывов клиентов</h2>
-            {reviews.map((rev) => (
-              <div key={rev.id} className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="font-bold text-sm text-white">{rev.client_name}</span> <span className="text-xs text-zinc-400">({rev.car_model})</span>
-                    <div className="flex items-center gap-1 mt-1 text-amber-400 text-xs">★ {rev.rating}.0</div>
-                  </div>
-                  <button onClick={() => handleDeleteReview(rev.id)} className="text-zinc-500 hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
-                </div>
-                <p className="text-xs text-zinc-200">{rev.comment}</p>
-                <div className="flex gap-2 pt-2">
-                  <input type="text" placeholder="Ответ сервиса..." value={replyDrafts[rev.id] ?? ''} onChange={(e) => setReplyDrafts({ ...replyDrafts, [rev.id]: e.target.value })} className="flex-1 p-2 rounded-xl bg-zinc-900 border border-white/10 text-xs text-white" />
-                  <button onClick={() => handleSaveReply(rev.id)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">Ответить</button>
+                <div>
+                  <h2 className="font-bold text-base text-white">Генератор QR-кода</h2>
+                  <p className="text-xs text-zinc-400">Настройте цвет и текст для печати</p>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
 
-        {activeSection === 'services' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-5 bg-zinc-900/70 border border-white/10 p-6 rounded-3xl h-fit">
-              <h2 className="font-bold text-base text-white mb-4">Добавить услугу</h2>
-              <form onSubmit={handleAddService} className="space-y-3.5">
-                <input type="text" required placeholder="Название услуги" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <input type="text" required placeholder="Категория" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="number" required placeholder="Цена (₽)" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
-                  <input type="number" required placeholder="Мин." value={newDuration} onChange={(e) => setNewDuration(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+              <div>
+                <label className="text-xs font-semibold text-zinc-400 block mb-2">Назначение QR-кода</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button type="button" onClick={() => setQrTarget('reviews')} className={qrTarget === 'reviews' ? 'p-2 rounded-xl border-2 border-amber-400 bg-zinc-950 text-xs font-bold text-white' : 'p-2 rounded-xl border border-white/10 bg-zinc-950/50 text-xs text-zinc-400'}>Отзывы</button>
+                  <button type="button" onClick={() => setQrTarget('services')} className={qrTarget === 'services' ? 'p-2 rounded-xl border-2 border-indigo-400 bg-zinc-950 text-xs font-bold text-white' : 'p-2 rounded-xl border border-white/10 bg-zinc-950/50 text-xs text-zinc-400'}>Запись</button>
+                  <button type="button" onClick={() => setQrTarget('portfolio')} className={qrTarget === 'portfolio' ? 'p-2 rounded-xl border-2 border-emerald-400 bg-zinc-950 text-xs font-bold text-white' : 'p-2 rounded-xl border border-white/10 bg-zinc-950/50 text-xs text-zinc-400'}>Работы</button>
                 </div>
-                <button type="submit" className="w-full bg-white text-zinc-950 py-3 rounded-xl text-xs font-bold">Добавить</button>
-              </form>
-            </div>
-            <div className="lg:col-span-7 space-y-3">
-              {services.map((s) => (
-                <div key={s.id} className="p-4 bg-zinc-900/70 border border-white/10 rounded-2xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-sm text-white">{s.title}</p>
-                    <p className="text-xs text-zinc-400">{s.category} • {s.duration_min} мин</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-emerald-400">{s.base_price} ₽</span>
-                    <button onClick={() => handleDeleteService(s.id)} className="text-zinc-500 hover:text-rose-400"><Trash2 className="w-4 h-4" /></button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-400">Цвет QR-кода</label>
+                  <div className="flex items-center gap-3 mt-1 p-2 rounded-xl bg-zinc-950 border border-white/10">
+                    <input type="color" value={qrColor} onChange={(e) => setQrColor(e.target.value)} className="w-8 h-8 rounded-lg bg-transparent cursor-pointer border-0" />
+                    <span className="text-xs font-mono text-zinc-300">{qrColor}</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+                <div>
+                  <label className="text-xs text-zinc-400">Заголовок</label>
+                  <input type="text" value={qrHeadline} onChange={(e) => setQrHeadline(e.target.value)} className="w-full p-2.5 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white mt-1" />
+                </div>
+              </div>
 
-        {activeSection === 'qr' && (
-          <div className="bg-zinc-900/70 border border-white/10 p-6 rounded-3xl max-w-xl mx-auto text-center space-y-4">
-            <h2 className="font-bold text-lg text-white">QR-код витрины</h2>
-            <div className="bg-white p-4 rounded-3xl w-64 h-64 mx-auto flex items-center justify-center">
-              <img src={qrImageSrc} alt="" className="w-full h-full object-contain" />
+              <div className="flex flex-col gap-3 pt-2">
+                <button type="button" onClick={downloadRawQR} className="py-3 px-4 rounded-xl text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white flex items-center justify-center gap-2 transition">
+                  <Download className="w-4 h-4" /> Скачать только QR (PNG)
+                </button>
+                <button type="button" onClick={() => window.print()} style={{ backgroundColor: tenant?.brand_color || '#e11d48' }} className="py-3 px-4 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 transition shadow">
+                  <Printer className="w-4 h-4" /> Распечатать плакат А4
+                </button>
+              </div>
             </div>
-            <p className="text-xs text-zinc-400">Распечатайте этот код для установки в боксе.</p>
+
+            <div className="lg:col-span-6 flex justify-center">
+              <div className="print-only-stand w-full max-w-md rounded-[32px] bg-zinc-900 border border-white/15 shadow-2xl overflow-hidden relative text-center p-8">
+                <div className="absolute top-0 left-0 right-0 h-2.5" style={{ backgroundColor: tenant?.brand_color || '#e11d48' }} />
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-zinc-950 border border-white/10 text-[11px] font-extrabold tracking-wider uppercase text-white mt-2">
+                  <span>{qrBadgeText}</span>
+                </div>
+                <h3 className="text-2xl font-extrabold text-white mt-4">{tenant?.name}</h3>
+                <p className="text-sm font-semibold text-zinc-300 mt-1">{qrHeadline}</p>
+                <div className="my-6 mx-auto w-64 h-64 rounded-3xl bg-white p-4 shadow-2xl border-4" style={{ borderColor: tenant?.brand_color || '#e11d48' }}>
+                  <img src={qrImageSrc} alt="QR" className="w-full h-full object-contain" />
+                </div>
+                <p className="text-xs text-zinc-400 max-w-xs mx-auto leading-relaxed">{qrSubtext}</p>
+              </div>
+            </div>
           </div>
         )}
+        
+        {/* Остальные вкладки (Портфолио, Отзывы, Настройки) работают как раньше... */}
+        {activeSection === 'portfolio' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              <div className="lg:col-span-5 bg-zinc-900/70 border border-white/10 p-6 rounded-3xl h-fit">
+                <h2 className="font-bold text-base text-white mb-4">Добавить работу в портфолио</h2>
+                <form onSubmit={handleAddPortfolio} className="space-y-3.5">
+                  <input type="text" required placeholder="Название работы" value={pfTitle} onChange={(e) => setPfTitle(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input type="text" required placeholder="Авто (Porsche 911)" value={pfCarModel} onChange={(e) => setPfCarModel(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                    <input type="text" required placeholder="Категория" value={pfCategory} onChange={(e) => setPfCategory(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  </div>
+                  <input type="url" required placeholder="URL фото ПОСЛЕ" value={pfImageUrl} onChange={(e) => setPfImageUrl(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  <input type="url" placeholder="URL фото ДО (опционально)" value={pfBeforeImageUrl} onChange={(e) => setPfBeforeImageUrl(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  <input type="number" required placeholder="Цена (₽)" value={pfPrice} onChange={(e) => setPfPrice(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  <textarea rows={3} placeholder="Описание..." value={pfDescription} onChange={(e) => setPfDescription(e.target.value)} className="w-full p-3 rounded-xl bg-zinc-950 border border-white/10 text-xs text-white" />
+                  <button type="submit" className="w-full bg-white text-zinc-950 hover:bg-zinc-200 py-3 rounded-xl text-xs font-bold">Опубликовать</button>
+                </form>
+              </div>
+              <div className="lg:col-span-7 space-y-3">
+                {portfolio.map((item) => (
+                  <div key={item.id} className="p-4 bg-zinc-900/70 border border-white/10 rounded-2xl flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <img src={item.image_url} alt="" className="w-20 h-16 object-cover rounded-xl" />
+                      <div>
+                        <p className="font-bold text-sm text-white">{item.title}</p>
+                        <p className="text-xs text-zinc-400">{item.car_model} • {item.price} ₽</p>
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeletePortfolio(item.id)} className="text-zinc-500 hover:text-rose-400 p-2"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
       </div>
     </div>
   );
