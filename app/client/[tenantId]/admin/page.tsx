@@ -74,10 +74,6 @@ export default function TenantAdminPage() {
   const [pfDescription, setPfDescription] = useState('');
 
   const [qrTarget, setQrTarget] = useState<'reviews' | 'services' | 'portfolio'>('reviews');
-  const [qrBadgeText, setQrBadgeText] = useState('ОЦЕНИТЕ КАЧЕСТВО РАБОТЫ');
-  const [qrHeadline, setQrHeadline] = useState('Понравился результат?');
-  const [qrSubtext, setQrSubtext] = useState('Наведите камеру смартфона для отзыва или записи');
-  const [qrWifiNote, setQrWifiNote] = useState('');
   const [originUrl, setOriginUrl] = useState('http://localhost:3000');
 
   useEffect(() => {
@@ -234,21 +230,10 @@ export default function TenantAdminPage() {
     loadAdminData();
   };
 
-  const handleUpdateService = async (service: Service) => {
-    await db.updateService(service.id, Number(service.base_price), Number(service.duration_min));
-    setSaveMessage('Прайс сохранен');
-    setTimeout(() => setSaveMessage(''), 2000);
-    loadAdminData();
-  };
-
   const handleDeleteService = async (id: string) => {
     if (!confirm('Удалить услугу?')) return;
     await db.deleteService(id);
     loadAdminData();
-  };
-
-  const updateLocalService = (id: string, field: 'base_price' | 'duration_min', value: string) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: Number(value) } : s)));
   };
 
   const toggleBookingStatus = async (bookingId: string, currentStatus: string) => {
@@ -322,6 +307,9 @@ export default function TenantAdminPage() {
   const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
   const totalRevenue = confirmedBookings.reduce((acc, b) => acc + Number(b.price || 0), 0);
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + Number(r.rating), 0) / reviews.length).toFixed(1) : '5.0';
+
+  const qrFullDestinationUrl = originUrl + '/client/' + tenantId + '?tab=' + qrTarget;
+  const qrImageSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=16&ecc=H&data=' + encodeURIComponent(qrFullDestinationUrl);
 
   return (
     <div className="min-h-screen bg-zinc-950 bg-astryx-grid text-zinc-100 p-6">
